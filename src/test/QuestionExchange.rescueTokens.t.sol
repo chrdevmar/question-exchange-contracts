@@ -22,12 +22,11 @@ contract Expire is Test, QuestionExchangeTestHelper {
         vm.prank(_askerAddress);
         questionExchange.ask(
             _answererAddress, // answererAddress
+            _askerAddress, // askerAddress
             'questionUrl', // questionUrl
             _token1, // bidToken
             5000, // bidAmout
-            0, // replyTo
-            100000, // expiresAt
-            false // isPrivate
+            100000 // expiresAt
         );
     }
 

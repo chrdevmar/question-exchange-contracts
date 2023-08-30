@@ -27,27 +27,28 @@ contract QuestionExchangeTestHelper is Test {
     address _token1;
     address _token2;
 
+    // enum QuestionStatus{ NONE, ASKED, ANSWERED }
+
     error EmptyQuestion();
+    error InvalidStatus();
     error AlreadyAnswered();
     error NotExpired();
     error ExpiryClaimed();
     error QuestionExpired();
     error EmptyAnswer();
     error NotAsker();
+    error FallbackNotPayable();
+    error ReceiveNotPayable();
 
-    struct Question {
-        uint256 replyTo;
-        string questionUrl;
-        string answerUrl;
-        address bidToken;
-        uint256 bidAmount;
-        uint256 expiresAt;
-        uint256 askedAt;
-        address asker;
-        uint256 expiryClaimedAt;
-        uint256 answeredAt;
-        bool isPrivate;
-    }
+    // struct Question {
+    //     QuestionStatus status;
+    //     string questionUrl;
+    //     string answerUrl;
+    //     address bidToken;
+    //     uint256 bidAmount;
+    //     uint256 expiresAt;
+    //     address asker;
+    // }
 
     function setUp() public virtual {
         // warp to a reasonable date to avoid underflows

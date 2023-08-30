@@ -24,4 +24,20 @@ contract Constructor is Test, QuestionExchangeTestHelper {
         questionExchange = new QuestionExchange(100);
         assertEq(questionExchange.feeReceiver(), questionExchange.owner());
     }
+
+    function test_EmptyQuestionsHaveStatusNone() public {
+        questionExchange = new QuestionExchange(100);
+
+        (
+            QuestionExchange.QuestionStatus status,
+            ,
+            ,
+            ,
+            ,
+            ,
+        ) = questionExchange.questions(_answererAddress, 0);
+
+        assertEq(uint(status), uint(QuestionExchange.QuestionStatus.NONE));
+
+    }
 }

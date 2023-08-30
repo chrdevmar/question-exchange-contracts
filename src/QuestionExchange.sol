@@ -12,18 +12,16 @@ contract QuestionExchange is Owned, ReentrancyGuard {
     uint8 public feePercentage;
     address public feeReceiver;
 
+    enum QuestionStatus{ NONE, ASKED, ANSWERED, EXPIRED }
+
     struct Question {
-        uint256 replyTo;
+        QuestionStatus status;
         string questionUrl;
         string answerUrl;
         address bidToken;
         uint256 bidAmount;
         uint256 expiresAt;
-        uint256 askedAt;
         address asker;
-        uint256 expiryClaimedAt;
-        uint256 answeredAt;
-        bool isPrivate;
     }
 
     mapping(address => mapping(uint256 => Question)) public questions;
@@ -52,11 +50,27 @@ contract QuestionExchange is Owned, ReentrancyGuard {
         uint256 indexed questionId
     );
 
+    /// @notice emitted when the fee receiver is set
+    event FeeReceiverSet(
+        address indexed feeReceiver
+    );
+
+    /// @notice emitted when the fee percentage is set
+    event FeePercentageSet(
+        uint8 indexed feePercentage
+    );
+
+    /// @notice emitted when the fee receiver is set
+    event ProfileUrlSet(
+        address indexed profileAddress,
+        string indexed profileUrl
+    );
+
     /// @notice thrown when providing an empty question
     error EmptyQuestion();
 
-    /// @notice thrown when answering a question that is already answered
-    error AlreadyAnswered();
+    /// @notice thrown when attempting to action a question with the wrong status
+    error InvalidStatus();
 
     /// @notice thrown when attempting to expire a question is answered or not yet expired
     error NotExpired();
@@ -82,41 +96,62 @@ contract QuestionExchange is Owned, ReentrancyGuard {
     constructor(uint8 _feePercentage) Owned(msg.sender) {
         feePercentage = _feePercentage;
         feeReceiver = owner;
+
+        emit FeePercentageSet(_feePercentage);
     }
 
     function ask(
-        address answerer, 
-        string memory questionUrl, 
-        address bidToken, 
+        address answerer,
+        address asker,
+        string memory questionUrl,
+        address bidToken,
         uint256 bidAmount,
-        uint256 replyTo,
-        uint256 expiresAt,
-        bool isPrivate
+        uint256 expiresAt
     ) public nonReentrant {
         uint256 nextQuestionId = questionCounts[answerer];
         questionCounts[answerer] = nextQuestionId + 1;
 
         questions[answerer][nextQuestionId] = Question({
-            replyTo: replyTo,
+            status: QuestionStatus.ASKED,
             questionUrl: questionUrl,
             bidToken: bidToken,
             bidAmount: bidAmount,
             expiresAt: expiresAt,
-            askedAt: block.timestamp,
-            asker: msg.sender,
-            isPrivate: isPrivate,
-            expiryClaimedAt: 0,
-            answeredAt: 0,
+            asker: asker,
             answerUrl: ''
         });
-
-        emit Asked(answerer, msg.sender, nextQuestionId);
 
         if(bidAmount != 0) {
             lockedAmounts[bidToken] += bidAmount;
 
             ERC20(bidToken).transferFrom(msg.sender, address(this), bidAmount);
         }
+
+        emit Asked(answerer, asker, nextQuestionId);
+    }
+
+    function answer(
+        uint256 questionId,
+        string memory answerUrl
+    ) public nonReentrant {
+        Question storage question = questions[msg.sender][questionId];
+        if(question.status != QuestionStatus.ASKED) revert InvalidStatus();
+        if(question.expiresAt <= block.timestamp) revert QuestionExpired();
+
+        question.answerUrl = answerUrl;
+        question.status = QuestionStatus.ANSWERED;
+
+        if(question.bidAmount != 0) {
+            lockedAmounts[question.bidToken] -= question.bidAmount;
+            uint256 feeAmount = feePercentage == 0 
+                ? 0
+                : question.bidAmount * feePercentage / 10000; // feePercentage is normalised to 2 decimals
+
+            ERC20(question.bidToken).transfer(msg.sender, question.bidAmount - feeAmount);
+            ERC20(question.bidToken).transfer(feeReceiver, feeAmount);
+        }
+
+        emit Answered(msg.sender, question.asker, questionId);
     }
 
     function expire(
@@ -124,14 +159,11 @@ contract QuestionExchange is Owned, ReentrancyGuard {
         uint256 questionId
     ) public nonReentrant {
         Question storage question = questions[answerer][questionId];
-        if(question.askedAt == 0) revert EmptyQuestion();
-        if(question.answeredAt != 0) revert AlreadyAnswered();
+        if(question.status != QuestionStatus.ASKED) revert InvalidStatus();
         if(question.expiresAt > block.timestamp) revert NotExpired();
-        if(question.expiryClaimedAt != 0) revert ExpiryClaimed();
         if(question.asker != msg.sender) revert NotAsker();
 
-        question.expiryClaimedAt = block.timestamp;
-        emit Expired(answerer, msg.sender, questionId);
+        question.status = QuestionStatus.EXPIRED;
         
         if(question.bidAmount != 0) {
             lockedAmounts[question.bidToken] -= question.bidAmount;
@@ -140,41 +172,23 @@ contract QuestionExchange is Owned, ReentrancyGuard {
             ERC20(question.bidToken).transfer(question.asker, question.bidAmount - feeAmount);
             ERC20(question.bidToken).transfer(feeReceiver, feeAmount);
         }
-    }
 
-    function answer(
-        uint256 questionId,
-        string memory answerUrl
-    ) public nonReentrant {
-        Question storage question = questions[msg.sender][questionId];
-        if(question.askedAt == 0) revert EmptyQuestion();
-        if(question.answeredAt != 0) revert AlreadyAnswered();
-        if(question.expiresAt <= block.timestamp) revert QuestionExpired();
-
-        question.answerUrl = answerUrl;
-        question.answeredAt = block.timestamp;
-
-        emit Answered(msg.sender, question.asker, questionId);
-
-        if(question.bidAmount != 0) {
-            lockedAmounts[question.bidToken] -= question.bidAmount;
-
-            uint256 feeAmount = question.bidAmount * feePercentage / 10000; // feePercentage is normalised to 2 decimals
-            ERC20(question.bidToken).transfer(msg.sender, question.bidAmount - feeAmount);
-            ERC20(question.bidToken).transfer(feeReceiver, feeAmount);
-        }
+        emit Expired(answerer, msg.sender, questionId);
     }
 
     function setFeePercentage(uint8 newFeePercentage) public onlyOwner {
         feePercentage = newFeePercentage;
+        emit FeePercentageSet(newFeePercentage);
     }
 
     function setFeeReceiver(address newFeeReceiver) public onlyOwner {
         feeReceiver = newFeeReceiver;
+        emit FeeReceiverSet(newFeeReceiver);
     }
 
     function setProfileUrl(string memory newProfileUrl) public {
         profileUrls[msg.sender] = newProfileUrl;
+        emit ProfileUrlSet(msg.sender, newProfileUrl);
     }
 
     function rescueTokens(address tokenAddress) public {

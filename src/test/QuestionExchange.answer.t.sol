@@ -22,12 +22,11 @@ contract Answer is Test, QuestionExchangeTestHelper {
         vm.prank(_askerAddress);
         questionExchange.ask(
             _answererAddress, // answererAddress
+            _askerAddress, // askerAddress
             'questionUrl', // questionUrl
             _token1, // bidToken
             5000, // bidAmout
-            0, // replyTo
-            100000, // expiresAt
-            false // isPrivate
+            100000 // expiresAt
         );
     }
 
@@ -48,23 +47,19 @@ contract Answer is Test, QuestionExchangeTestHelper {
         uint256 _questionExchangeBalanceAfter = ERC20(_token1).balanceOf(address(questionExchange));
 
         (
-            ,
+            QuestionExchange.QuestionStatus status,
             ,
             string memory answerUrl,
             ,
             uint256 bidAmount,
             ,
-            ,
-            ,
-            ,
-            uint256 answeredAt,
         ) = questionExchange.questions(_answererAddress, 0);
 
         uint256 feePercentage = questionExchange.feePercentage();
         uint256 feeAmount = bidAmount * feePercentage / 10000;
 
+        assertEq(uint(status), uint(QuestionExchange.QuestionStatus.ANSWERED));
         assertEq(answerUrl, 'answerUrl');
-        assertEq(answeredAt, 42070);
 
         assertEq(questionExchange.lockedAmounts(_token1), 0);
         assertEq(_answererBalanceAfter, _answererBalanceBefore + bidAmount - feeAmount);
@@ -75,7 +70,7 @@ contract Answer is Test, QuestionExchangeTestHelper {
     function test_MustBeAsked() public {
         vm.warp(42070);
 
-        vm.expectRevert(EmptyQuestion.selector);
+        vm.expectRevert(InvalidStatus.selector);
         vm.prank(_answererAddress);
         questionExchange.answer(
             1, // questionId
@@ -91,7 +86,7 @@ contract Answer is Test, QuestionExchangeTestHelper {
             'answerUrl1' // questionUrl
         );
 
-        vm.expectRevert(AlreadyAnswered.selector);
+        vm.expectRevert(InvalidStatus.selector);
         vm.prank(_answererAddress);
         questionExchange.answer(
             0, // questionId

@@ -22,12 +22,11 @@ contract Expire is Test, QuestionExchangeTestHelper {
         vm.prank(_askerAddress);
         questionExchange.ask(
             _answererAddress, // answererAddress
+            _askerAddress, // askerAddress
             'questionUrl', // questionUrl
             _token1, // bidToken
             5000, // bidAmout
-            0, // replyTo
-            100000, // expiresAt
-            false // isPrivate
+            100000 // expiresAt
         );
     }
 
@@ -49,15 +48,11 @@ contract Expire is Test, QuestionExchangeTestHelper {
         uint256 _questionExchangeBalanceAfter = ERC20(_token1).balanceOf(address(questionExchange));
 
         (
-            ,
+            QuestionExchange.QuestionStatus status,
             ,
             ,
             ,
             uint256 bidAmount,
-            ,
-            ,
-            ,
-            uint256 expiryClaimedAt,
             ,
         ) = questionExchange.questions(_answererAddress, 0);
 
@@ -65,7 +60,7 @@ contract Expire is Test, QuestionExchangeTestHelper {
         uint256 feeAmount = bidAmount * feePercentage / 10000;
 
         assertEq(questionExchange.lockedAmounts(_token1), 0);
-        assertEq(expiryClaimedAt, 100001);
+        assertEq(uint(status), uint(QuestionExchange.QuestionStatus.EXPIRED));
 
         assertEq(_askerBalanceAfter, _askerBalanceBefore + bidAmount - feeAmount);
         assertEq(_feeReceiverBalanceAfter, _feeReceiverBalanceBefore + feeAmount);
@@ -76,7 +71,7 @@ contract Expire is Test, QuestionExchangeTestHelper {
         // expires at 100000
         vm.warp(100001);
 
-        vm.expectRevert(EmptyQuestion.selector);
+        vm.expectRevert(InvalidStatus.selector);
         vm.prank(_askerAddress);
         questionExchange.expire(_answererAddress, 1);
     }
@@ -88,7 +83,7 @@ contract Expire is Test, QuestionExchangeTestHelper {
 
         // expires at 100000
         vm.warp(100001);
-        vm.expectRevert(AlreadyAnswered.selector);
+        vm.expectRevert(InvalidStatus.selector);
         vm.prank(_askerAddress);
         questionExchange.expire(_answererAddress, 0);
     }
@@ -107,7 +102,7 @@ contract Expire is Test, QuestionExchangeTestHelper {
         vm.prank(_askerAddress);
         questionExchange.expire(_answererAddress, 0);
 
-        vm.expectRevert(ExpiryClaimed.selector);
+        vm.expectRevert(InvalidStatus.selector);
         vm.prank(_askerAddress);
         questionExchange.expire(_answererAddress, 0);
     }
